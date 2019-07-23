@@ -19,18 +19,18 @@ class Router:
 class Message:
     messageText = ""
     sender = ""
-    receivers = list(Router)
+    receivers = set(Router)
 
 def readFile(filename):
     return None
 
 #to be called every Route_update_interval and 2*Route_update_interval when topology changes
-def calculateDijkstraForNode(Router):
+def calculateDijkstraForNode(router : Router):
     return None
 
-def printOutput(router):
+def printOutput(router: Router):
     print ("I am Router A")
-    # for a in set of routers:
-    print("Least cost path to router C:AFDC and the cost is 4.5")
+    for a in router.neighbours:
+        print("Least cost path to router C:AFDC and the cost is 4.5")
     return None
 
