@@ -6,6 +6,7 @@ UPDATE_INTERVAL = 1  #1 secs
 ROUTE_UPDATE_INTERVAL = 30  #in secs
 NEIGHBOURS = 'neighbours'
 SENDER = 'sender'
+TIME = 'time'
 
 class Neighbour:
     # def __init__(self, neighbourName, port, costToReach):
@@ -66,7 +67,7 @@ def constructMsg(router: Router):
     messageText = dict()
     messageText[NEIGHBOURS] = router.neighboursDict
     messageText[SENDER] = router.routerName
-    messageText['time'] = time.time()
+    messageText[TIME] = time.time()
 
     return messageText
     
