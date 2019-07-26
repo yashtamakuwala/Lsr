@@ -1,12 +1,17 @@
 #!usr/bin/python3
 from socket import *
 import time
+import sys
+import json
+import ast
 
 UPDATE_INTERVAL = 1  #1 secs
 ROUTE_UPDATE_INTERVAL = 30  #in secs
 NEIGHBOURS = 'neighbours'
 SENDER = 'sender'
 TIME = 'time'
+SERVERNAME = 'localhost'
+clientSocket = socket(AF_INET, SOCK_DGRAM)
 
 class Neighbour:
     # def __init__(self, neighbourName, port, costToReach):
@@ -49,7 +54,7 @@ def readFile(filename):
             neighbour.neighbourName, neighbour.costToReach, neighbour.port = n.split(' ')
             neighbour.port = int(str(neighbour.port[:-1]))
             router.neighbours.append(neighbour)
-            router.neighboursDict[neighbour.neighbourName] = float(neighbour.costToReach)
+            router.neighboursDict[neighbour.neighbourName] = (neighbour.port ,float(neighbour.costToReach))
 
     return router
 
@@ -69,9 +74,37 @@ def constructMsg(router: Router):
     messageText[SENDER] = router.routerName
     messageText[TIME] = time.time()
 
-    return messageText
+    return str(messageText)
     
 
-router = readFile('configA.txt')
+def sendMessage(message : str, router : Router):
+    
+    for k, v in router.neighboursDict.items():
+        port = v[0]
+        clientSocket.sendto(message.encode(),(SERVERNAME, port))
+        print(f'Router {router.routerName} sent message to: {k} at port: {port}')
+        
 
-print(constructMsg(router))
+def receiveMessage(router: Router):
+    rcvdMsg, sender = clientSocket.recvfrom(2048)
+    rcvdMsg = rcvdMsg.decode("utf-8")
+    rcvdMsg = ast.literal_eval(rcvdMsg) #decoding and converting to dictionary
+    return rcvdMsg, sender
+
+def forwardMessage(message: dict, router: Router):
+    for k, v in router.neighboursDict.items():
+        if k not in message:    #forward received message to only those neighbours that havent received it
+            port = v[0]
+            clientSocket.sendto(message.encode(),(SERVERNAME, port))
+
+filename = sys.argv[1]
+router = readFile(filename)
+clientSocket.bind((SERVERNAME, router.port))
+msg = constructMsg(router)
+
+print(msg)
+sendMessage(msg, router)
+
+# time.sleep(5)
+msg = receiveMessage(router)
+print(msg)
