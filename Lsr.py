@@ -12,6 +12,7 @@ TIME = 'time'
 SERVERNAME = 'localhost'
 clientSocket = socket(AF_INET, SOCK_DGRAM)
 
+lastReceived = dict()
 
 class Neighbour:
     # def __init__(self, neighbourName, port, costToReach):
@@ -52,7 +53,6 @@ def readFile(filename):
             neighbour = Neighbour()
             n = file.readline().rstrip()
             neighbour.neighbourName, neighbour.costToReach, neighbour.port = n.split(' ')
-            # neighbour.port = int(str(neighbour.port[:-1]))
             neighbour.port = int(neighbour.port)
             neighbour.costToReach = float(neighbour.costToReach)
             router.neighbours.append(neighbour)
@@ -79,7 +79,7 @@ def constructMsg(router: Router):
     return str(messageText)
     
 
-def sendMessage(message : str, router : Router):
+def broadcastLSA(message : str, router : Router):
     
     for k, v in router.neighboursDict.items():
         port = v[0]
@@ -93,11 +93,17 @@ def receiveMessage(router: Router):
     rcvdMsg = ast.literal_eval(rcvdMsg) # converting to dictionary
     return rcvdMsg, sender
 
-def forwardMessage(message: dict, router: Router):
+def sendMessage(message: dict, router: Router):
     for k, v in router.neighboursDict.items():
         if k not in message:    #forward received message to only those neighbours that havent received it
             port = v[0]
             clientSocket.sendto(message.encode(), (SERVERNAME, port))
+
+def forwardMessage(router: Router):
+    rcvdMsg, sender = receiveMessage(router)
+    if lastReceived.get(sender, 0) < rcvdMsg[TIME]:
+        lastReceived[sender] = rcvdMsg[TIME]
+        sendMessage(rcvdMsg, router)
 
 filename = sys.argv[1]
 router = readFile(filename)
@@ -105,7 +111,7 @@ clientSocket.bind((SERVERNAME, router.port))
 msg = constructMsg(router)
 
 print(msg)
-sendMessage(msg, router)
+broadcastLSA(msg, router)
 
 # time.sleep(5)
 msg = receiveMessage(router)
