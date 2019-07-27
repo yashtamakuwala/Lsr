@@ -1,5 +1,6 @@
 #!usr/bin/python3
 from socket import *
+import threading
 import time
 import sys
 import ast
@@ -30,10 +31,12 @@ class Neighbour:
 
 class Router:
     routerName = ""
+    
     port = 0
     neighbours = list() #will be list or dictionary?
     neighboursDict = dict()
     linkDict = dict()
+    
 
 class Message:
     seqNo = 0
@@ -48,6 +51,7 @@ def readFile(filename):
         router.routerName, router.port = l1.split(' ')
         router.port = int(router.port)
         noOfNeighbors = int(file.readline())
+        neighDict = dict()
 
         for i in range(noOfNeighbors):
             neighbour = Neighbour()
@@ -58,11 +62,20 @@ def readFile(filename):
             router.neighbours.append(neighbour)
             router.neighboursDict[neighbour.neighbourName] = (neighbour.port, neighbour.costToReach) #TODO: perhaps dont need to send port number
 
+            neighDict[neighbour.neighbourName] = neighbour.costToReach  
+
+        
     return router
 
 #to be called every Route_update_interval and 2*Route_update_interval when topology changes
 def calculateDijkstraForNode(router : Router):
-    return None
+    print("Dijsktra")
+    time.sleep(30.0)
+    while(True):
+        for k in router.linkDict.keys():
+            dijkstra(router.linkDict, router.routerName, k)
+        time.sleep(30.0)
+
 
 def printOutput(router: Router):
     print ("I am Router A")
@@ -72,7 +85,15 @@ def printOutput(router: Router):
 
 def constructMsg(router: Router):
     messageText = dict()
-    messageText[NEIGHBOURS] = router.neighboursDict
+    neighDict = dict()
+
+    for k, v in router.neighboursDict.items():
+        neighDict[k] = v[1]
+    
+    router.linkDict[router.routerName] = neighDict
+    print(str(router.linkDict))
+    messageText[NEIGHBOURS] = neighDict
+
     messageText[SENDER] = router.routerName
     messageText[TIME] = time.time()
 
@@ -80,42 +101,41 @@ def constructMsg(router: Router):
     
 
 def broadcastLSA(message : str, router : Router):
-    
-    for k, v in router.neighboursDict.items():
-        port = v[0]
-        clientSocket.sendto(message.encode(),(SERVERNAME, port))
-        print(f'Router {router.routerName} sent message to: {k} at port: {port}')
+    while(True):
+        for k, v in router.neighboursDict.items():
+            port = v[0]
+            clientSocket.sendto(message.encode(),(SERVERNAME, port))
+            print(f'Router {router.routerName} sent message to: {k} at port: {port}')
         
+        time.sleep(1.0)
+        
+                
 
 def receiveMessage(router: Router):
     rcvdMsg, sender = clientSocket.recvfrom(2048)
     rcvdMsg = rcvdMsg.decode("utf-8") #decoding
     rcvdMsg = ast.literal_eval(rcvdMsg) # converting to dictionary
+    sender = rcvdMsg[SENDER]
     return rcvdMsg, sender
 
 def sendMessage(message: dict, router: Router):
     for k, v in router.neighboursDict.items():
-        if k not in message:    #forward received message to only those neighbours that havent received it
+        if k not in message and k is not message[SENDER]:    #forward received message to only those neighbours that havent received it
             port = v[0]
-            clientSocket.sendto(message.encode(), (SERVERNAME, port))
+            clientSocket.sendto(str(message).encode(), (SERVERNAME, port))
 
 def forwardMessage(router: Router):
-    rcvdMsg, sender = receiveMessage(router)
-    if lastReceived.get(sender, 0) < rcvdMsg[TIME]:
-        lastReceived[sender] = rcvdMsg[TIME]
-        sendMessage(rcvdMsg, router)
-
-filename = sys.argv[1]
-router = readFile(filename)
-clientSocket.bind((SERVERNAME, router.port))
-msg = constructMsg(router)
-
-print(msg)
-broadcastLSA(msg, router)
-
-# time.sleep(5)
-msg = receiveMessage(router)
-print(msg)
+    # print("forward")
+    while (True):
+        rcvdMsg, sender = receiveMessage(router)
+        if lastReceived.get(sender, 0) < rcvdMsg[TIME]:
+            print(rcvdMsg)
+            lastReceived[sender] = rcvdMsg[TIME]
+            router.linkDict[sender] = rcvdMsg[NEIGHBOURS]
+            print("link dict:" + str(router.linkDict))
+            sendMessage(rcvdMsg, router)
+            
+        # time.sleep(1.0)
 
 
 def dijkstra(graph,src,dest,visited=[],distances={},predecessors={}):
@@ -158,11 +178,23 @@ def dijkstra(graph,src,dest,visited=[],distances={},predecessors={}):
         x=min(unvisited, key=unvisited.get)
         dijkstra(graph,x,dest,visited,distances,predecessors)
 
-if(1):
-    graph = {'s': {'a': 2, 'b': 1},
-                'a': {'s': 3, 'b': 4, 'c':8},
-                'b': {'s': 4, 'a': 2, 'd': 2},
-                'c': {'a': 2, 'd': 7, 't': 4},
-                'd': {'b': 1, 'c': 11, 't': 5},
-                't': {'c': 3, 'd': 5}}
-    dijkstra(graph,'s','t')
+
+# if __name__ == "__main__":
+filename = sys.argv[1]
+router = readFile(filename)
+clientSocket.bind((SERVERNAME, router.port))
+
+
+msg = constructMsg(router)
+thBroadcast = threading.Thread(target=broadcastLSA, args=(msg, router, ))
+# thBroadcast.daemon = True
+thBroadcast.start()
+
+thForward = threading.Thread(target=forwardMessage, args=(router, ))
+# thForward.daemon = True
+thForward.start()
+
+thDijsk = threading.Thread(target = calculateDijkstraForNode, args = (router, ))
+# thDijsk.daemon = True
+thDijsk.start()
+
