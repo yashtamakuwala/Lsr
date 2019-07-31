@@ -4,6 +4,7 @@ import threading
 import time
 import sys
 import ast
+import pdb
 
 UPDATE_INTERVAL = 1  #1 secs
 ROUTE_UPDATE_INTERVAL = 30  #in secs
@@ -11,7 +12,8 @@ NEIGHBOURS = 'neighbours'
 SENDER = 'sender'
 TIME = 'time'
 SERVERNAME = 'localhost'
-clientSocket = socket(AF_INET, SOCK_DGRAM)
+FORWARDER = 'forwarder'
+# clientSocket = socket(AF_INET, SOCK_DGRAM)
 
 lastReceived = dict()
 
@@ -72,16 +74,21 @@ def calculateDijkstraForNode(router : Router):
     print("Dijsktra")
     time.sleep(30.0)
     while(True):
-        for k in router.linkDict.keys():
-            dijkstra(router.linkDict, router.routerName, k)
+        # for node in router.linkDict.keys():
+        paths, distances = dijkstra(router.linkDict, router.routerName)
+        print("paths: ", str(paths))
+        print("distances: ", str(distances))
+        currRouter = router.routerName
+        
+        print ("I am Router ", currRouter)
+        printOutput(paths, distances, currRouter)
         time.sleep(30.0)
 
 
-def printOutput(router: Router):
-    print ("I am Router A")
-    for a in router.neighbours:
-        print("Least cost path to router C:AFDC and the cost is 4.5")
-    return None
+def printOutput(paths: dict, distances: dict, currentRouter: str):
+    for node, distance in distances.items():
+        if node is not currentRouter:
+            print("Least cost path to router ", node ,":",str(paths[node]), " and the cost is ", distance)
 
 def constructMsg(router: Router):
     messageText = dict()
@@ -91,7 +98,7 @@ def constructMsg(router: Router):
         neighDict[k] = v[1]
     
     router.linkDict[router.routerName] = neighDict
-    print(str(router.linkDict))
+    # print(str(router.linkDict))
     messageText[NEIGHBOURS] = neighDict
 
     messageText[SENDER] = router.routerName
@@ -102,25 +109,31 @@ def constructMsg(router: Router):
 
 def broadcastLSA(message : str, router : Router):
     while(True):
+        clientSocket = socket(AF_INET, SOCK_DGRAM)
         for k, v in router.neighboursDict.items():
             port = v[0]
             clientSocket.sendto(message.encode(),(SERVERNAME, port))
-            print(f'Router {router.routerName} sent message to: {k} at port: {port}')
+            # print(f'Router {router.routerName} sent message to: {k} at port: {port}')
         
         time.sleep(1.0)
         
-                
-
 def receiveMessage(router: Router):
-    rcvdMsg, sender = clientSocket.recvfrom(2048)
-    rcvdMsg = rcvdMsg.decode("utf-8") #decoding
+    clientSocket = socket(AF_INET, SOCK_DGRAM)
+    clientSocket.bind((SERVERNAME, router.port))
+    rcvdMsg = clientSocket.recvfrom(2048)
+    rcvdMsg = rcvdMsg[0].decode("utf-8") #decoding
     rcvdMsg = ast.literal_eval(rcvdMsg) # converting to dictionary
+    rcvdMsg[FORWARDER] = router.routerName
     sender = rcvdMsg[SENDER]
     return rcvdMsg, sender
 
+# TODO: dont send to A->B->C->D. C wont send received msg of A from B to B,
 def sendMessage(message: dict, router: Router):
+    clientSocket = socket(AF_INET, SOCK_DGRAM)
+    originalSender = message[SENDER]
+    forwardingRouter = message[FORWARDER]
     for k, v in router.neighboursDict.items():
-        if k not in message and k is not message[SENDER]:    #forward received message to only those neighbours that havent received it
+        if k is not originalSender or k is not forwardingRouter:    #forward received message to only those neighbours that havent received it
             port = v[0]
             clientSocket.sendto(str(message).encode(), (SERVERNAME, port))
 
@@ -138,55 +151,45 @@ def forwardMessage(router: Router):
         # time.sleep(1.0)
 
 
-def dijkstra(graph,src,dest,visited=[],distances={},predecessors={}):
-    """ calculates a shortest path tree routed in src
-    """    
-    # a few sanity checks
-    if src not in graph:
-        raise TypeError('The root of the shortest path tree cannot be found')
-    if dest not in graph:
-        raise TypeError('The target of the shortest path cannot be found')    
-    # ending condition
-    if src == dest:
-        # We build the shortest path and display it
-        path=[]
-        pred=dest
-        while pred != None:
-            path.append(pred)
-            pred=predecessors.get(pred,None)
-        print('shortest path: '+str(path)+" cost="+str(distances[dest])) 
-    else :     
-        # if it is the initial  run, initializes the cost
-        if not visited: 
-            distances[src]=0
-        # visit the neighbors
-        for neighbor in graph[src] :
-            if neighbor not in visited:
-                new_distance = distances[src] + graph[src][neighbor]
-                if new_distance < distances.get(neighbor,float('inf')):
-                    distances[neighbor] = new_distance
-                    predecessors[neighbor] = src
-        # mark as visited
-        visited.append(src)
-        # now that all neighbors have been visited: recurse                         
-        # select the non visited node with lowest distance 'x'
-        # run Dijskstra with src='x'
-        unvisited={}
-        for k in graph:
-            if k not in visited:
-                unvisited[k] = distances.get(k,float('inf'))        
-        x=min(unvisited, key=unvisited.get)
-        dijkstra(graph,x,dest,visited,distances,predecessors)
+def dijkstra(nodesDict: dict, current: str):
+    nodes = nodesDict.keys()
+    unvisited = {node: None for node in nodes} #using None as +inf
+    distances = dict()
+    currentDistance = 0
+    unvisited[current] = currentDistance
+    path = current
+    paths = dict()
 
+    while True:
+        for neighbour, distance in nodesDict[current].items():
+            if neighbour not in unvisited: 
+                    continue
+            newDistance = currentDistance + distance
+            if unvisited[neighbour] is None or unvisited[neighbour] > newDistance:
+                unvisited[neighbour] = newDistance
+        distances[current] = currentDistance
+        del unvisited[current]
+        if not unvisited: 
+                break
+        candidates = [node for node in unvisited.items() if node[1]]
+        current, currentDistance = sorted(candidates, key = lambda x: x[1])[0]
+        
+        path += current
+        paths[current] = path
+
+    # del distances[current]
+    # delValue = distances.pop(current, None)
+    # print("DelValue: ", str(delValue))
+    return paths, distances
 
 # if __name__ == "__main__":
 filename = sys.argv[1]
 router = readFile(filename)
-clientSocket.bind((SERVERNAME, router.port))
 
 
 msg = constructMsg(router)
 thBroadcast = threading.Thread(target=broadcastLSA, args=(msg, router, ))
+# pdb.set_trace()
 # thBroadcast.daemon = True
 thBroadcast.start()
 
