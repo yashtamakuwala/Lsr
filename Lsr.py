@@ -71,13 +71,12 @@ def readFile(filename):
 
 #to be called every Route_update_interval and 2*Route_update_interval when topology changes
 def calculateDijkstraForNode(router : Router):
-    print("Dijsktra")
     time.sleep(30.0)
     while(True):
         # for node in router.linkDict.keys():
         paths, distances = dijkstra(router.linkDict, router.routerName)
-        print("paths: ", str(paths))
-        print("distances: ", str(distances))
+        # print("paths: ", str(paths))
+        # print("distances: ", str(distances))
         currRouter = router.routerName
         
         print ("I am Router ", currRouter)
@@ -98,7 +97,6 @@ def constructMsg(router: Router):
         neighDict[k] = v[1]
     
     router.linkDict[router.routerName] = neighDict
-    # print(str(router.linkDict))
     messageText[NEIGHBOURS] = neighDict
 
     messageText[SENDER] = router.routerName
@@ -138,17 +136,14 @@ def sendMessage(message: dict, router: Router):
             clientSocket.sendto(str(message).encode(), (SERVERNAME, port))
 
 def forwardMessage(router: Router):
-    # print("forward")
     while (True):
         rcvdMsg, sender = receiveMessage(router)
         if lastReceived.get(sender, 0) < rcvdMsg[TIME]:
-            print(rcvdMsg)
+            # print(rcvdMsg)
             lastReceived[sender] = rcvdMsg[TIME]
             router.linkDict[sender] = rcvdMsg[NEIGHBOURS]
-            print("link dict:" + str(router.linkDict))
+            # print("link dict:" + str(router.linkDict))
             sendMessage(rcvdMsg, router)
-            
-        # time.sleep(1.0)
 
 
 def dijkstra(nodesDict: dict, current: str):
@@ -177,9 +172,6 @@ def dijkstra(nodesDict: dict, current: str):
         path += current
         paths[current] = path
 
-    # del distances[current]
-    # delValue = distances.pop(current, None)
-    # print("DelValue: ", str(delValue))
     return paths, distances
 
 # if __name__ == "__main__":
