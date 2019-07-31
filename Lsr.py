@@ -146,6 +146,7 @@ def forwardMessage(router: Router):
             sendMessage(rcvdMsg, router)
 
 
+# https://stackoverflow.com/a/22899400/4933540
 def dijkstra(nodesDict: dict, current: str):
     nodes = nodesDict.keys()
     unvisited = {node: None for node in nodes} #using None as +inf
