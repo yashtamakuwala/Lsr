@@ -121,7 +121,7 @@ def receiveMessage(router: Router):
     rcvdMsg = clientSocket.recvfrom(2048)
     rcvdMsg = rcvdMsg[0].decode("utf-8") #decoding
     rcvdMsg = ast.literal_eval(rcvdMsg) # converting to dictionary
-    rcvdMsg[FORWARDER] = router.routerName
+    # forwarder = rcvdMsg.get(FORWARDER, None)
     sender = rcvdMsg[SENDER]
     return rcvdMsg, sender
 
@@ -129,7 +129,8 @@ def receiveMessage(router: Router):
 def sendMessage(message: dict, router: Router):
     clientSocket = socket(AF_INET, SOCK_DGRAM)
     originalSender = message[SENDER]
-    forwardingRouter = message[FORWARDER]
+    forwardingRouter = message.get(FORWARDER, None)
+    message[FORWARDER] = router.routerName
     for k, v in router.neighboursDict.items():
         if k is not originalSender or k is not forwardingRouter:    #forward received message to only those neighbours that havent received it
             port = v[0]
