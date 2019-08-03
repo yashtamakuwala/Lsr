@@ -37,8 +37,8 @@ class Router:
     port = 0
     neighbours = list() #will be list or dictionary?
     neighboursDict = dict()
-    linkDict = dict()
-    
+    linkDict = dict()   #Global topology
+    msg = dict()
 
 class Message:
     seqNo = 0
@@ -97,16 +97,18 @@ def constructMsg(router: Router):
         neighDict[k] = v[1]
     
     router.linkDict[router.routerName] = neighDict
-    messageText[NEIGHBOURS] = neighDict
 
+    messageText[NEIGHBOURS] = neighDict
     messageText[SENDER] = router.routerName
     messageText[TIME] = time.time()
 
+    router.msg = messageText
     return str(messageText)
     
 
-def broadcastLSA(message : str, router : Router):
+def broadcastLSA(router : Router):
     while(True):
+        message = constructMsg(router)
         clientSocket = socket(AF_INET, SOCK_DGRAM)
         for k, v in router.neighboursDict.items():
             port = v[0]
@@ -176,15 +178,40 @@ def dijkstra(nodesDict: dict, current: str):
 
     return paths, distances
 
+
+def checkForDeadNodes(router: Router):
+    while(True): 
+        currentTime = time.time()
+        allNodes = list(lastReceived.keys())
+        for node in allNodes:
+            lastTimeRcvd = lastReceived[node]
+            if node in router.neighboursDict.keys():
+                if ((currentTime - lastTimeRcvd) > 3) : #3s for neighbours and 13s for non-neighbour
+                    removeNodePresence(router, node)
+            else:
+                if ((currentTime - lastTimeRcvd) > 13):
+                    removeNodePresence(router, node)
+
+# remove node from last received and router.neighboursDict
+def removeNodePresence(router: Router, node: str):
+    _ = lastReceived.pop(node)
+    _ = router.linkDict.pop(node)
+    for k in router.linkDict:
+        if node in router.linkDict[k]:
+            _ = router.linkDict[k].pop(node)
+        # for keyDict in router.linkDict[k]:
+    
+    if node in router.msg[NEIGHBOURS]:
+        _ = router.msg[NEIGHBOURS].pop(node)
+
+    if node in router.neighboursDict:
+        _ = router.neighboursDict.pop(node)    
+
 # if __name__ == "__main__":
 filename = sys.argv[1]
 router = readFile(filename)
 
-
-msg = constructMsg(router)
-thBroadcast = threading.Thread(target=broadcastLSA, args=(msg, router, ))
-# pdb.set_trace()
-# thBroadcast.daemon = True
+thBroadcast = threading.Thread(target=broadcastLSA, args=(router, ))
 thBroadcast.start()
 
 thForward = threading.Thread(target=forwardMessage, args=(router, ))
@@ -195,3 +222,5 @@ thDijsk = threading.Thread(target = calculateDijkstraForNode, args = (router, ))
 # thDijsk.daemon = True
 thDijsk.start()
 
+tdead = threading.Thread(target = checkForDeadNodes, args = (router, ))
+tdead.start()
