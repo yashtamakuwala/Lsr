@@ -71,9 +71,9 @@ def readFile(filename):
 
 #to be called every Route_update_interval and 2*Route_update_interval when topology changes
 def calculateDijkstraForNode(router : Router):
-    time.sleep(30.0)
+    
     while(True):
-        # for node in router.linkDict.keys():
+        time.sleep(ROUTE_UPDATE_INTERVAL)
         paths, distances = dijkstra(router.linkDict, router.routerName)
         # print("paths: ", str(paths))
         # print("distances: ", str(distances))
@@ -81,7 +81,7 @@ def calculateDijkstraForNode(router : Router):
         
         print ("I am Router ", currRouter)
         printOutput(paths, distances, currRouter)
-        time.sleep(30.0)
+        
 
 
 def printOutput(paths: dict, distances: dict, currentRouter: str):
@@ -127,27 +127,34 @@ def receiveMessage(router: Router):
     sender = rcvdMsg[SENDER]
     return rcvdMsg, sender
 
-# TODO: dont send to A->B->C->D. C wont send received msg of A from B to B,
+def forwardMessage(router: Router):
+    while (True):
+        rcvdMsg, sender = receiveMessage(router)
+        # print("LAST RECEIVED:" + str(lastReceived))
+        if lastReceived.get(sender, 0) < rcvdMsg[TIME]:
+            # print(f'received msg: {rcvdMsg} from {sender}')
+            if sender is not router.routerName:     #sender shouldnt be current router
+                lastReceived[sender] = rcvdMsg[TIME]
+            router.linkDict[sender] = rcvdMsg[NEIGHBOURS]
+            # print("Time diff for sender", sender, " LAST RECEIVED:" + str(lastReceived))
+            sendMessage(rcvdMsg, router)
+
+# router wont send msg to original sender and the router it received the message from
 def sendMessage(message: dict, router: Router):
     clientSocket = socket(AF_INET, SOCK_DGRAM)
     originalSender = message[SENDER]
     forwardingRouter = message.get(FORWARDER, None)
-    message[FORWARDER] = router.routerName
-    for k, v in router.neighboursDict.items():
-        if k is not originalSender or k is not forwardingRouter:    #forward received message to only those neighbours that havent received it
+    nodes = list(router.neighboursDict.keys())
+    for node in nodes:
+        v = router.neighboursDict[node]
+        if node is not originalSender and node is not forwardingRouter:    #forward received message to only those neighbours that havent received it
             port = v[0]
-            clientSocket.sendto(str(message).encode(), (SERVERNAME, port))
-
-def forwardMessage(router: Router):
-    while (True):
-        rcvdMsg, sender = receiveMessage(router)
-        if lastReceived.get(sender, 0) < rcvdMsg[TIME]:
-            # print(rcvdMsg)
-            lastReceived[sender] = rcvdMsg[TIME]
-            router.linkDict[sender] = rcvdMsg[NEIGHBOURS]
-            # print("link dict:" + str(router.linkDict))
-            sendMessage(rcvdMsg, router)
-
+            try:
+                message[FORWARDER] = router.routerName
+                clientSocket.sendto(str(message).encode(), (SERVERNAME, port))
+            except:
+                pass
+            
 
 # https://stackoverflow.com/a/22899400/4933540
 def dijkstra(nodesDict: dict, current: str):
@@ -159,23 +166,25 @@ def dijkstra(nodesDict: dict, current: str):
     path = current
     paths = dict()
 
-    while True:
-        for neighbour, distance in nodesDict[current].items():
-            if neighbour not in unvisited: 
-                    continue
-            newDistance = currentDistance + distance
-            if unvisited[neighbour] is None or unvisited[neighbour] > newDistance:
-                unvisited[neighbour] = newDistance
-        distances[current] = currentDistance
-        del unvisited[current]
-        if not unvisited: 
+    try:
+        while True:
+            for neighbour, distance in nodesDict[current].items():
+                if neighbour not in unvisited: 
+                        continue
+                newDistance = currentDistance + distance
+                if unvisited[neighbour] is None or unvisited[neighbour] > newDistance:
+                    unvisited[neighbour] = newDistance
+            distances[current] = currentDistance
+            del unvisited[current]
+            if not unvisited: 
                 break
-        candidates = [node for node in unvisited.items() if node[1]]
-        current, currentDistance = sorted(candidates, key = lambda x: x[1])[0]
-        
-        path += current
-        paths[current] = path
-
+            candidates = [node for node in unvisited.items() if node[1]]
+            current, currentDistance = sorted(candidates, key = lambda x: x[1])[0]
+            
+            path += current
+            paths[current] = path
+    except:
+        pass
     return paths, distances
 
 
@@ -185,15 +194,24 @@ def checkForDeadNodes(router: Router):
         allNodes = list(lastReceived.keys())
         for node in allNodes:
             lastTimeRcvd = lastReceived[node]
-            if node in router.neighboursDict.keys():
+
+            routerNeighDictKeys = list(router.neighboursDict.keys())
+            if node in routerNeighDictKeys:
                 if ((currentTime - lastTimeRcvd) > 3) : #3s for neighbours and 13s for non-neighbour
+                    print(f'Deleting neighbour {node} for router {router.routerName} from lastReceived')
+                    print(f'currtime: {currentTime} lastTimeRcvd : {lastTimeRcvd}')
                     removeNodePresence(router, node)
             else:
-                if ((currentTime - lastTimeRcvd) > 13):
+                if ((currentTime - lastTimeRcvd) > 14):
+                    print(f'Deleting distant {node} for router {router.routerName} from lastReceived')
+                    print(f'currtime: {currentTime} lastTimeRcvd : {lastTimeRcvd}')
                     removeNodePresence(router, node)
 
 # remove node from last received and router.neighboursDict
 def removeNodePresence(router: Router, node: str):
+
+    
+
     _ = lastReceived.pop(node)
     _ = router.linkDict.pop(node)
     for k in router.linkDict:
@@ -210,7 +228,7 @@ def removeNodePresence(router: Router, node: str):
 # if __name__ == "__main__":
 filename = sys.argv[1]
 router = readFile(filename)
-
+print("router neighbours: ",router.neighboursDict)
 thBroadcast = threading.Thread(target=broadcastLSA, args=(router, ))
 thBroadcast.start()
 
@@ -218,9 +236,9 @@ thForward = threading.Thread(target=forwardMessage, args=(router, ))
 # thForward.daemon = True
 thForward.start()
 
-thDijsk = threading.Thread(target = calculateDijkstraForNode, args = (router, ))
+thDijks = threading.Thread(target = calculateDijkstraForNode, args = (router, ))
 # thDijsk.daemon = True
-thDijsk.start()
+thDijks.start()
 
 tdead = threading.Thread(target = checkForDeadNodes, args = (router, ))
 tdead.start()
