@@ -5,6 +5,7 @@ import time
 import sys
 import ast
 import pdb
+import copy
 
 UPDATE_INTERVAL = 1  #1 secs
 ROUTE_UPDATE_INTERVAL = 30  #in secs
@@ -70,23 +71,9 @@ def readFile(filename):
         
     return router
 
-#to be called every Route_update_interval and 2*Route_update_interval when topology changes
-def calculateDijkstraForNode(router : Router):
-    
-    while(True):
-        time.sleep(ROUTE_UPDATE_INTERVAL)
-        paths, distances = dijkstra(router.linkDict, router.routerName)
-        currRouter = router.routerName
-        
-        print ("I am Router ", currRouter)
-        printOutput(paths, distances, currRouter)
-        
-
-
-def printOutput(paths: dict, distances: dict, currentRouter: str):
-    for node, distance in distances.items():
-        if node is not currentRouter:
-            print("Least cost path to router ", node ,":",str(paths[node]), " and the cost is ", round(distance,1))
+       
+# def printOutput(paths: str, distances: str, currentRouter: str):
+#     print("Least cost path to router ", node ,":",str(paths[node]), " and the cost is ", round(distance,1))
 
 def constructMsg(router: Router):
     messageText = dict()
@@ -120,9 +107,7 @@ def broadcastLSA(router : Router):
                 # print("Sending time: ", d[TIME])
                 # print(f'Router {router.routerName} sent message to: {node} at port: {port}')
             router.lastSent = time.time()
-        
-        
-        
+                        
 def receiveMessage(router: Router):
     clientSocket = socket(AF_INET, SOCK_DGRAM)
     clientSocket.bind((SERVERNAME, router.port))
@@ -170,41 +155,78 @@ def sendMessage(message: dict, router: Router):
             try:
                 message[FORWARDER] = router.routerName
                 clientSocket.sendto(str(message).encode(), (SERVERNAME, port))
-            except clientSocket.error as msg:   #TODO: check this
+            except Exception as msg:   #TODO: check this
                 print('Error: %s', msg)
                 
+
+#to be called every Route_update_interval and 2*Route_update_interval when topology changes
+def calculateDijkstraForNode(router : Router):
+    
+    while(True):
+        time.sleep(ROUTE_UPDATE_INTERVAL)
+        allLinkages = copy.copy(router.linkDict)
+        nodes = set(allLinkages.keys())
+        currRouter = router.routerName
+        
+        print ("I am Router ", currRouter)
+        
+        for node in nodes:
+            linkages = copy.deepcopy(allLinkages)
+            if node is not currRouter:
+                distance, path = dijkstra(linkages, currRouter, node)
+                print("Least cost path to router ", node ,":", path, " and the cost is ", distance)
             
 
-# https://stackoverflow.com/a/22899400/4933540
-def dijkstra(nodesDict: dict, current: str):
-    nodes = nodesDict.keys()
-    unvisited = {node: None for node in nodes} #using None as +inf
-    distances = dict()
-    currentDistance = 0
-    unvisited[current] = currentDistance
-    path = current
-    paths = dict()
+# https://gist.github.com/amitabhadey/37af83a84d8c372a9f02372e6d5f6732
+def dijkstra(graph,start,goal):
 
-    try:
-        while True:
-            for neighbour, distance in nodesDict[current].items():
-                if neighbour not in unvisited: 
-                        continue
-                newDistance = currentDistance + distance
-                if unvisited[neighbour] is None or unvisited[neighbour] > newDistance:
-                    unvisited[neighbour] = newDistance
-            distances[current] = currentDistance
-            del unvisited[current]
-            if not unvisited: 
-                break
-            candidates = [node for node in unvisited.items() if node[1]]
-            current, currentDistance = sorted(candidates, key = lambda x: x[1])[0]
-            
-            path += current
-            paths[current] = path
-    except:
-        pass
-    return paths, distances
+    shortest_distance = {} 
+    track_predecessor = {} 
+    unseenNodes = graph 
+    infinity = 5000 
+    track_path = [] 
+
+    for node in unseenNodes:
+        shortest_distance[node] = infinity
+
+    shortest_distance[start] = 0
+
+    while unseenNodes:
+        min_distance_node = None
+
+        for node in unseenNodes:
+            if min_distance_node is None:
+                min_distance_node = node
+
+            elif shortest_distance[node] < shortest_distance[min_distance_node]:
+                min_distance_node = node
+
+        path_options = graph[min_distance_node].items()
+
+        for child_node, weight in path_options:
+
+            if weight + shortest_distance[min_distance_node] < shortest_distance[child_node]:
+                shortest_distance[child_node] = weight + shortest_distance[min_distance_node]
+                track_predecessor[child_node] = min_distance_node
+        unseenNodes.pop(min_distance_node)
+
+    currentNode = goal
+
+    while currentNode != start:
+
+        try:
+            track_path.insert(0,currentNode)
+            currentNode = track_predecessor[currentNode]
+        except KeyError:
+            print('Path not reachable')
+            break
+    track_path.insert(0,start)
+
+    if shortest_distance[goal] != infinity:
+        distance = round(shortest_distance[goal], 1)
+        path = ''.join(track_path)
+        return distance, path
+
 
 
 def checkForDeadNodes(router: Router):
