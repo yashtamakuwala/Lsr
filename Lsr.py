@@ -94,11 +94,12 @@ def constructMsg(router: Router):
     
 
 def broadcastLSA(router : Router):
+    clientSocket = socket(AF_INET, SOCK_DGRAM)
     while(True):
         # time.sleep(UPDATE_INTERVAL)
         if router.lastSent is None or time.time() > (router.lastSent + 1.0):
             message = constructMsg(router)
-            clientSocket = socket(AF_INET, SOCK_DGRAM)
+            
             nodes = list(router.neighboursDict.keys())
             for node in nodes:
                 port = router.neighboursDict[node][0]
@@ -146,17 +147,20 @@ def sendMessage(message: dict, router: Router):
     if forwardingRouter is not None:
         lastReceived[forwardingRouter] = time.time()
     
-    nodes = list(router.neighboursDict.keys())
+    neighboursDict = copy.deepcopy(router.neighboursDict)
+
+    nodes = list(neighboursDict.keys())
     # print(f"Neighbours of {router.routerName} are {nodes}")
     for node in nodes:
-        v = router.neighboursDict[node]
+        v = neighboursDict[node]
         if node is not originalSender and node is not forwardingRouter:
             port = v[0]
             try:
                 message[FORWARDER] = router.routerName
                 clientSocket.sendto(str(message).encode(), (SERVERNAME, port))
             except Exception as msg:   #TODO: check this
-                print('Error: %s', msg)
+                print('Error:', msg)
+    clientSocket.close()
                 
 
 #to be called every Route_update_interval and 2*Route_update_interval when topology changes
@@ -173,8 +177,15 @@ def calculateDijkstraForNode(router : Router):
         for node in nodes:
             linkages = copy.deepcopy(allLinkages)
             if node is not currRouter:
-                distance, path = dijkstra(linkages, currRouter, node)
-                print("Least cost path to router ", node ,":", path, " and the cost is ", distance)
+                dijk = dijkstra(linkages, currRouter, node)
+                if dijk is not None:
+                    distance = dijk[0]
+                    path = dijk[1]
+                    print("Least cost path to router ",node,":",path," and the cost is ",distance)
+                else :
+                    print("dijk is None")
+                    print(f'linkdict: ',router.linkDict)
+                    print(f'start: {currRouter}, goal: {node}')
             
 
 # https://gist.github.com/amitabhadey/37af83a84d8c372a9f02372e6d5f6732
