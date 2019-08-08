@@ -6,6 +6,7 @@ import sys
 import ast
 import pdb
 import copy
+import math
 
 UPDATE_INTERVAL = 1  #1 secs
 ROUTE_UPDATE_INTERVAL = 30  #in secs
@@ -14,23 +15,24 @@ SENDER = 'sender'
 TIME = 'time'
 SERVERNAME = 'localhost'
 FORWARDER = 'forwarder'
-# clientSocket = socket(AF_INET, SOCK_DGRAM)
+INFINITY = 9999
 
 lastReceived = dict()
+neighbourPorts = dict()
 
 class Neighbour:
-    # def __init__(self, neighbourName, port, costToReach):
-    #     self.neighbourName = neighbourName
+    # def __init__(self, name, port, costToReach):
+    #     self.name = name
     #     self.port = port
     #     self.costToReach = costToReach
 
-    neighbourName = ""
+    name = ""
     port = 0    #has to be integer
     costToReach = -1.0  #has to be float with 1 decimal place, will not change after initialisation
     # cost is bidrection => A->B = B->A
 
     def __repr__(self):
-        return str(self.neighbourName + "-" + self.costToReach + "-" + str(self.port))
+        return str(self.name + "-" + self.costToReach + "-" + str(self.port))
 
 class Router:
     routerName = ""
@@ -60,13 +62,13 @@ def readFile(filename):
         for i in range(noOfNeighbors):
             neighbour = Neighbour()
             n = file.readline().rstrip()
-            neighbour.neighbourName, neighbour.costToReach, neighbour.port = n.split(' ')
+            neighbour.name, neighbour.costToReach, neighbour.port = n.split(' ')
             neighbour.port = int(neighbour.port)
             neighbour.costToReach = float(neighbour.costToReach)
             router.neighbours.append(neighbour)
-            router.neighboursDict[neighbour.neighbourName] = (neighbour.port, neighbour.costToReach) #TODO: perhaps dont need to send port number
-
-            neighDict[neighbour.neighbourName] = neighbour.costToReach  
+            router.neighboursDict[neighbour.name] = (neighbour.port, neighbour.costToReach) #TODO: perhaps dont need to send port number
+            neighbourPorts[neighbour.name] = neighbour.port
+            neighDict[neighbour.name] = neighbour.costToReach  
 
         
     return router
@@ -89,7 +91,9 @@ def constructMsg(router: Router):
     messageText[SENDER] = router.routerName
     messageText[TIME] = time.time()
 
-    router.msg = messageText
+    router.msg = copy.deepcopy(messageText)
+    # if router.routerName is 'A':
+    #     print(f'construct msg {messageText}')
     return str(messageText)
     
 
@@ -99,10 +103,10 @@ def broadcastLSA(router : Router):
         # time.sleep(UPDATE_INTERVAL)
         if router.lastSent is None or time.time() > (router.lastSent + 1.0):
             message = constructMsg(router)
-            
             nodes = list(router.neighboursDict.keys())
             for node in nodes:
-                port = router.neighboursDict[node][0]
+                # port = router.neighboursDict[node][0]
+                port = neighbourPorts[node]
                 clientSocket.sendto(message.encode(),(SERVERNAME, port))
                 d = ast.literal_eval(message)
                 # print("Sending time: ", d[TIME])
@@ -128,7 +132,6 @@ def forwardMessage(router: Router):
 
         # if sender is 'D':
         #     print(rcvdMsg)
-        currTime = time.time()
         if lastReceived.get(sender, 0) < rcvdMsg[TIME]:
         # if lastReceived.get(sender, 0) < currTime:
             # print(f'received msg: {rcvdMsg} from {sender}')
@@ -137,6 +140,8 @@ def forwardMessage(router: Router):
                 # lastReceived[sender] = currTime
                 router.linkDict[sender] = rcvdMsg[NEIGHBOURS]
                 # print("Time diff for sender", sender, " LAST RECEIVED:" + str(lastReceived))
+                # if sender is 'D':
+                #     print(f"Received and forwarding D's msg")
                 sendMessage(rcvdMsg, router)
 
 # router wont send msg to original sender and the router it received the message from
@@ -144,9 +149,19 @@ def sendMessage(message: dict, router: Router):
     clientSocket = socket(AF_INET, SOCK_DGRAM)
     originalSender = message[SENDER]
     forwardingRouter = message.get(FORWARDER, None)
+    currRouter = router.routerName
+
     if forwardingRouter is not None:
         lastReceived[forwardingRouter] = time.time()
-    
+    else :  #which means receivied directly from sender and neighbour
+        neighbs = message[NEIGHBOURS]
+        # print(f'rcv msg : {message}')
+        cost = neighbs[currRouter]
+        oldDict = router.linkDict[currRouter]
+        oldDict[originalSender] = cost
+        router.linkDict[currRouter] = oldDict
+        router.neighboursDict[originalSender] = ( neighbourPorts[originalSender], cost)
+
     neighboursDict = copy.deepcopy(router.neighboursDict)
 
     nodes = list(neighboursDict.keys())
@@ -154,7 +169,7 @@ def sendMessage(message: dict, router: Router):
     for node in nodes:
         v = neighboursDict[node]
         if node is not originalSender and node is not forwardingRouter:
-            port = v[0]
+            port = neighbourPorts[node]
             try:
                 message[FORWARDER] = router.routerName
                 clientSocket.sendto(str(message).encode(), (SERVERNAME, port))
@@ -185,6 +200,8 @@ def calculateDijkstraForNode(router : Router):
                 else :
                     print("dijk is None")
                     print(f'linkdict: ',router.linkDict)
+                    print(f'linkages: {linkages}')
+                    print(f'allLinkages: {allLinkages}')
                     print(f'start: {currRouter}, goal: {node}')
             
 
@@ -194,7 +211,7 @@ def dijkstra(graph,start,goal):
     shortest_distance = {} 
     track_predecessor = {} 
     unseenNodes = graph 
-    infinity = 5000 
+    infinity = INFINITY 
     track_path = [] 
 
     for node in unseenNodes:
@@ -213,13 +230,16 @@ def dijkstra(graph,start,goal):
                 min_distance_node = node
 
         path_options = graph[min_distance_node].items()
+        
+        try:
+            for child_node, weight in path_options:
 
-        for child_node, weight in path_options:
-
-            if weight + shortest_distance[min_distance_node] < shortest_distance[child_node]:
-                shortest_distance[child_node] = weight + shortest_distance[min_distance_node]
-                track_predecessor[child_node] = min_distance_node
-        unseenNodes.pop(min_distance_node)
+                if weight + shortest_distance[min_distance_node] < shortest_distance[child_node]:
+                    shortest_distance[child_node] = weight + shortest_distance[min_distance_node]
+                    track_predecessor[child_node] = min_distance_node
+            unseenNodes.pop(min_distance_node)
+        except:
+            print(f'graph {graph}, min_distance_node: {min_distance_node}, shortest_distance:{shortest_distance}, child node: {child_node}')
 
     currentNode = goal
 
@@ -267,16 +287,25 @@ def removeNodePresence(router: Router, node: str):
 
     _ = lastReceived.pop(node)
     _ = router.linkDict.pop(node)
-    for k in router.linkDict:
-        if node in router.linkDict[k]:
-            _ = router.linkDict[k].pop(node)
-        # for keyDict in router.linkDict[k]:
     
+    try :
+        for k in router.linkDict:
+            if node in router.linkDict[k]:
+                _ = router.linkDict[k].pop(node)
+                # router.linkDict[k][node] = INFINITY
+            # for keyDict in router.linkDict[k]:
+    except:
+        print("linkDict: ", router.linkDict)
+
     if node in router.msg[NEIGHBOURS]:
         _ = router.msg[NEIGHBOURS].pop(node)
 
     if node in router.neighboursDict:
-        _ = router.neighboursDict.pop(node)    
+        _ = router.neighboursDict.pop(node)
+        # v = router.neighboursDict[node]
+        # t = v[0], INFINITY
+        # router.neighboursDict[node] = t
+        print("dead rou neighLink: ", router.neighboursDict)
 
 # if __name__ == "__main__":
 filename = sys.argv[1]
