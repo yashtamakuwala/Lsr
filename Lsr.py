@@ -173,8 +173,9 @@ def sendMessage(message: dict, router: Router):
             try:
                 message[FORWARDER] = router.routerName
                 clientSocket.sendto(str(message).encode(), (SERVERNAME, port))
-            except Exception as msg:   #TODO: check this
-                print('Error:', msg)
+            except Exception as msg:
+                pass
+                # print('Error:', msg)
     clientSocket.close()
                 
 
@@ -198,11 +199,12 @@ def calculateDijkstraForNode(router : Router):
                     path = dijk[1]
                     print("Least cost path to router ",node,":",path," and the cost is ",distance)
                 else :
-                    print("dijk is None")
-                    print(f'linkdict: ',router.linkDict)
-                    print(f'linkages: {linkages}')
-                    print(f'allLinkages: {allLinkages}')
-                    print(f'start: {currRouter}, goal: {node}')
+                    pass
+                    # print("dijk is None")
+                    # print(f'linkdict: ',router.linkDict)
+                    # print(f'linkages: {linkages}')
+                    # print(f'allLinkages: {allLinkages}')
+                    # print(f'start: {currRouter}, goal: {node}')
             
 
 # https://gist.github.com/amitabhadey/37af83a84d8c372a9f02372e6d5f6732
@@ -271,15 +273,15 @@ def checkForDeadNodes(router: Router):
             currentTime = time.time()
             if node in routerNeighDictKeys:
                 if ((currentTime - lastTimeRcvd) > 4) : #3s for neighbours and 13s for non-neighbour
-                    print(f'Deleting neighbour {node} for router {router.routerName} from lastReceived')
-                    print(f'currtime: {currentTime} lastTimeRcvd : {lastTimeRcvd}')
-                    print("LasTRcvd:",lastReceived)
+                    # print(f'Deleting neighbour {node} for router {router.routerName} from lastReceived')
+                    # print(f'currtime: {currentTime} lastTimeRcvd : {lastTimeRcvd}')
+                    # print("LasTRcvd:",lastReceived)
                     removeNodePresence(router, node)
             else:
                 if ((currentTime - lastTimeRcvd) > 13):
-                    print(f'Deleting distant {node} for router {router.routerName} from lastReceived')
-                    print(f'currtime: {currentTime} lastTimeRcvd : {lastTimeRcvd}')
-                    print("LasTRcvd:",lastReceived)
+                    # print(f'Deleting distant {node} for router {router.routerName} from lastReceived')
+                    # print(f'currtime: {currentTime} lastTimeRcvd : {lastTimeRcvd}')
+                    # print("LasTRcvd:",lastReceived)
                     removeNodePresence(router, node)
 
 # remove node from last received and router.neighboursDict
@@ -295,7 +297,8 @@ def removeNodePresence(router: Router, node: str):
                 # router.linkDict[k][node] = INFINITY
             # for keyDict in router.linkDict[k]:
     except:
-        print("linkDict: ", router.linkDict)
+        pass
+        # print("linkDict: ", router.linkDict)
 
     if node in router.msg[NEIGHBOURS]:
         _ = router.msg[NEIGHBOURS].pop(node)
@@ -305,7 +308,7 @@ def removeNodePresence(router: Router, node: str):
         # v = router.neighboursDict[node]
         # t = v[0], INFINITY
         # router.neighboursDict[node] = t
-        print("dead rou neighLink: ", router.neighboursDict)
+        # print("dead rou neighLink: ", router.neighboursDict)
 
 # if __name__ == "__main__":
 filename = sys.argv[1]
