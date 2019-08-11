@@ -66,7 +66,7 @@ def readFile(filename):
             neighbour.port = int(neighbour.port)
             neighbour.costToReach = float(neighbour.costToReach)
             router.neighbours.append(neighbour)
-            router.neighboursDict[neighbour.name] = (neighbour.port, neighbour.costToReach) #TODO: perhaps dont need to send port number
+            router.neighboursDict[neighbour.name] = (neighbour.port, neighbour.costToReach) 
             neighbourPorts[neighbour.name] = neighbour.port
             neighDict[neighbour.name] = neighbour.costToReach  
 
@@ -99,20 +99,23 @@ def constructMsg(router: Router):
 
 def broadcastLSA(router : Router):
     clientSocket = socket(AF_INET, SOCK_DGRAM)
-    while(True):
-        # time.sleep(UPDATE_INTERVAL)
-        if router.lastSent is None or time.time() > (router.lastSent + 1.0):
-            message = constructMsg(router)
-            nodes = list(router.neighboursDict.keys())
-            for node in nodes:
-                # port = router.neighboursDict[node][0]
-                port = neighbourPorts[node]
-                clientSocket.sendto(message.encode(),(SERVERNAME, port))
-                d = ast.literal_eval(message)
-                # print("Sending time: ", d[TIME])
-                # print(f'Router {router.routerName} sent message to: {node} at port: {port}')
-            router.lastSent = time.time()
-                        
+    try: 
+        while(True):
+            # time.sleep(UPDATE_INTERVAL)
+            if router.lastSent is None or time.time() > (router.lastSent + 1.0):
+                message = constructMsg(router)
+                nodes = list(router.neighboursDict.keys())
+                for node in nodes:
+                    # port = router.neighboursDict[node][0]
+                    port = neighbourPorts[node]
+                    clientSocket.sendto(message.encode(),(SERVERNAME, port))
+                    # d = ast.literal_eval(message)
+                    # print("Sending time: ", d[TIME])
+                    # print(f'Router {router.routerName} sent message to: {node} at port: {port}')
+                router.lastSent = time.time()
+    except:
+        pass    
+               
 def receiveMessage(router: Router):
     clientSocket = socket(AF_INET, SOCK_DGRAM)
     clientSocket.bind((SERVERNAME, router.port))
@@ -197,7 +200,7 @@ def calculateDijkstraForNode(router : Router):
                 if dijk is not None:
                     distance = dijk[0]
                     path = dijk[1]
-                    print("Least cost path to router ",node,":",path," and the cost is ",distance)
+                    print(f'Least cost path to router {node}: {path} and the cost is {distance}')
                 else :
                     pass
                     # print("dijk is None")
@@ -210,16 +213,16 @@ def calculateDijkstraForNode(router : Router):
 # https://gist.github.com/amitabhadey/37af83a84d8c372a9f02372e6d5f6732
 def dijkstra(graph,start,goal):
 
-    shortest_distance = {} 
-    track_predecessor = {} 
+    shortestdistDict = {} 
+    parentDict = {} 
     unseenNodes = graph 
     infinity = INFINITY 
-    track_path = [] 
+    traversedPathList = [] 
 
     for node in unseenNodes:
-        shortest_distance[node] = infinity
+        shortestdistDict[node] = infinity
 
-    shortest_distance[start] = 0
+    shortestdistDict[start] = 0
 
     while unseenNodes:
         min_distance_node = None
@@ -228,7 +231,7 @@ def dijkstra(graph,start,goal):
             if min_distance_node is None:
                 min_distance_node = node
 
-            elif shortest_distance[node] < shortest_distance[min_distance_node]:
+            elif shortestdistDict[node] < shortestdistDict[min_distance_node]:
                 min_distance_node = node
 
         path_options = graph[min_distance_node].items()
@@ -236,28 +239,29 @@ def dijkstra(graph,start,goal):
         try:
             for child_node, weight in path_options:
 
-                if weight + shortest_distance[min_distance_node] < shortest_distance[child_node]:
-                    shortest_distance[child_node] = weight + shortest_distance[min_distance_node]
-                    track_predecessor[child_node] = min_distance_node
+                if weight + shortestdistDict[min_distance_node] < shortestdistDict[child_node]:
+                    shortestdistDict[child_node] = weight + shortestdistDict[min_distance_node]
+                    parentDict[child_node] = min_distance_node
             unseenNodes.pop(min_distance_node)
         except:
-            print(f'graph {graph}, min_distance_node: {min_distance_node}, shortest_distance:{shortest_distance}, child node: {child_node}')
+            # print(f'graph {graph}, min_distance_node: {min_distance_node}, shortest_distance:{shortest_distance}, child node: {child_node}')
+            return None
 
     currentNode = goal
 
     while currentNode != start:
 
         try:
-            track_path.insert(0,currentNode)
-            currentNode = track_predecessor[currentNode]
+            traversedPathList.insert(0,currentNode)
+            currentNode = parentDict[currentNode]
         except KeyError:
-            print('Path not reachable')
+            # print('Path not reachable')
             break
-    track_path.insert(0,start)
+    traversedPathList.insert(0,start)
 
-    if shortest_distance[goal] != infinity:
-        distance = round(shortest_distance[goal], 1)
-        path = ''.join(track_path)
+    if shortestdistDict[goal] != infinity:
+        distance = round(shortestdistDict[goal], 1)
+        path = ''.join(traversedPathList)
         return distance, path
 
 
